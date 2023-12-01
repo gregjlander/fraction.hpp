@@ -25,15 +25,22 @@
 #include <iostream>
 #include <iomanip>
 //#include <format>
+#include <array>
 #include <vector>
 #include <cassert>
 #include "fraction.hpp"
 
-std::string check( std::string s, std::string expected ) {
+consteval auto compile_time(auto value)
+{
+    return value;
+}
+
+std::string check( std::string s, const std::string &expected ) {
 	if ( expected != "" ) {
-		std::string m{ "\nERROR: Actual:" + s + " != Expected:" + expected };
-		if ( s.compare( expected ) != 0 )
-			std::cout << m << '\n';
+		if ( s.compare( expected ) != 0 ) {
+			std::string m{ "\nERROR: Actual:" + s + " != Expected:" + expected };
+			std::cout << m;// << '\n';
+		};
 		//assert( s.compare( expected ) == 0 );
 	};
 	return s;
@@ -70,7 +77,7 @@ void fmt( std::string &s1, std::string &s2, T &&...p ) {
 using Fraction = mth::fraction<>;
 
 int main() {
-	const std::vector< Fraction > f{
+	constexpr std::array< Fraction, 17 > f{
 		7_f,		Fraction::f_0,		{ 2, 0 },
 		{ 1, 4 },	{ 48, 7 },			{ 3, 2 },
 		{ 5, 3 },	{ -25, 49 },		{ 4, -10 },
@@ -83,30 +90,25 @@ int main() {
 
 	std::vector< std::vector< std::string > > expected;
 	expected = {
-		{ "7", "7.000000", "7", "(1/7)", "true", "false", "(10/3)", "(31/12)" },
-		{ "0", "0.000000", "0", "(1/0)", "true", "false", "1", "(1/4)" },
-		{ "(1/0)", "inf", "(1/0)", "0", "false", "false", "2", "(1/0)" },
-		{ "(1/4)", "0.250000", "(1/4)", "4", "false", "false", "(2/3)", "(1/3)" },
-		{ "(48/7)", "6.857143", "(48/7)", "(7/48)", "false", "false", "(17/3)", "(71/28)" },
-		{ "(3/2)", "1.500000", "(3/2)", "(2/3)", "false", "false", "(3/2)", "(3/4)" },
-		{ "(5/3)", "1.666667", "(5/3)", "(3/5)", "false", "false", "(8/5)",  "(29/36)" },
-		{ "(-25/49)", "-0.510204", "(25/49)", "(-49/25)", "false", "true",
-		  "(-22/51)", "(47/588)" },
-		{ "(-2/5)", "-0.400000", "(2/5)", "(-5/2)", "false", "true", "(1/7)", "(7/60)" },
-		{ "2", "2.000000", "2", "(1/2)", "true", "false", "(5/3)", "(11/12)" },
-		{ "(49/25)", "1.960000", "(49/25)", "(25/49)", "false", "false",
-		  "(52/27)", "(271/300)" },
-		{ "(8/27)", "0.296296", "(8/27)", "(27/8)", "false", "false", "(11/29)", "(113/324)" },
-		{ "(56/45)", "1.244444", "(56/45)", "(45/56)", "false", "false",
-		  "(59/47)", "(359/540)" },
-		{ "(392/10125)", "0.038716", "(392/10125)", "(10125/392)", "false",
-		  "false", "(395/10127)", "(31943/121500)" },
-		{ "(355/113)", "3.141593", "(355/113)", "(113/355)", "false", "false",
-		  "(358/115)", "(1759/1356)" },
-		{ "(1/3)", "0.333333", "(1/3)", "3", "false", "false", "(4/5)", "(13/36)" },
-		{ "(25641/76924)","0.333329","(25641/76924)", "(76924/25641)" ,"false","false","(4274/12821)","(13889/38462)"}
+		{"7","7.000000","7","(1/7)","{7,0}","true","false","(10/3)","(31/12)"},
+		{"0","0.000000","0","(1/0)","{0,0}","true","false","1","(1/4)"},
+		{"(1/0)","inf","(1/0)","0","{0,(1/0)}","false","false","2","(1/0)"},
+		{"(1/4)","0.250000","(1/4)","4","{0,(1/4)}","false","false","(2/3)","(1/3)"},
+		{"(48/7)","6.857143","(48/7)","(7/48)","{6,(6/7)}","false","false","(17/3)","(71/28)"},
+		{"(3/2)","1.500000","(3/2)","(2/3)","{1,(1/2)}","false","false","(3/2)","(3/4)"},
+		{"(5/3)","1.666667","(5/3)","(3/5)","{1,(2/3)}","false","false","(8/5)","(29/36)"},
+		{"(-25/49)","-0.510204","(25/49)","(-49/25)","{0,(-25/49)}","false","true","(-22/51)","(47/588)"},
+		{"(-2/5)","-0.400000","(2/5)","(-5/2)","{0,(-2/5)}","false","true","(1/7)","(7/60)"},
+		{"2","2.000000","2","(1/2)","{2,0}","true","false","(5/3)","(11/12)"},
+		{"(49/25)","1.960000","(49/25)","(25/49)","{1,(24/25)}","false","false","(52/27)","(271/300)"},
+		{"(8/27)","0.296296","(8/27)","(27/8)","{0,(8/27)}","false","false","(11/29)","(113/324)"},
+		{"(56/45)","1.244444","(56/45)","(45/56)","{1,(11/45)}","false","false","(59/47)","(359/540)"},
+		{"(392/10125)","0.038716","(392/10125)","(10125/392)","{0,(392/10125)}","false","false","(395/10127)","(31943/121500)"},
+		{"(355/113)","3.141593","(355/113)","(113/355)","{3,(16/113)}","false","false","(358/115)","(1759/1356)"},
+		{"(1/3)","0.333333","(1/3)","3","{0,(1/3)}","false","false","(4/5)","(13/36)"},
+		{"(25641/76924)","0.333329","(25641/76924)","(76924/25641)","{0,(25641/76924)}","false","false","(4274/12821)","(13889/38462)"}
 	};
-	std::cout << " Init:       │to_double│ abs:        │ inv:        "
+	std::cout << " Init:       │to_double│ abs:        │ inv:        │ modf:            "
 				 "│is_int│is_neg│Mediant(f,1.5)│Av(f,0.5,0.25)\n";
 	if ( expected.size() != f.size() ) {
 		std::cout << "ERROR: Expected results array[" +
@@ -115,24 +117,32 @@ int main() {
 						 "].\n";
 	};
 	for ( auto i = 0; i != (int)f.size(); ++i ) {
+		std::pair mod = f[i].modf();
 		fmt( st, result, std::tuple{ f[i].to_string(), 13 },
 			 std::tuple{ std::to_string( f[i].to_double() ), 9 },
 			 std::tuple{ check( f[i].abs().to_string(), expected[i][2] ), 13 },
 			 std::tuple{ check( f[i].inv().to_string(), expected[i][3] ), 13 },
+			 std::tuple{ check( "{" + std::to_string( (int)mod.first ) + "," +
+									mod.second.to_string() + "}",
+								expected[i][4] ),
+						 18 },
 			 std::tuple{
-				 check( ( f[i].is_int() ? "true" : "false" ), expected[i][4] ),
+				 check( ( f[i].is_int() ? "true" : "false" ), expected[i][5] ),
 				 6 },
 			 std::tuple{
-				 check( ( f[i].is_neg() ? "true" : "false" ), expected[i][5] ),
+				 check( ( f[i].is_neg() ? "true" : "false" ), expected[i][6] ),
 				 6 },
 			 std::tuple{ check( mediant( f[i], Fraction{ 3, 2 } ).to_string(),
-								expected[i][6] ), 14 },
+								expected[i][7] ),
+						 14 },
 			 std::tuple{
 				 check( average( Fraction{ 1, 2 }, Fraction{ 1, 4 }, f[i] )
-							.to_string(), expected[i][7] ), 14 } );
+							.to_string(),
+						expected[i][8] ),
+				 14 } );
 	};
 	std::cout << st << '\n';
-	// std::cout << result;
+	//std::cout << result;
 
 	result = "";
 	st = "";
@@ -475,7 +485,13 @@ int main() {
 	};
 	std::cout << st << '\n';
 	// std::cout << result;
-	
+
+	constexpr double ce1 = compile_time( f[7].to_double() );
+	constexpr Fraction ce2 = compile_time(
+		mth::to_fraction_using_stern_brocot_with_mediants( f[7].to_double() ) );
+	std::cout << "consteval: " << f[7].to_string() << ","
+			  << std::to_string( ce1 ) << "," << ce2.to_string() << '\n';
+
 	Fraction t1( (long)INFINITY, 1);
 	const long t1_gcd =  std::gcd( (long) INFINITY, 1 );
 	const long t1_num = (long)INFINITY / (long)std::copysign( t1_gcd, 1 );
@@ -500,5 +516,6 @@ int main() {
 	Fraction t7((long)-NAN, 1);
 	Fraction t8(1, (long)-NAN);
 	std::cout << "Test: -NaN[" << t7.to_string() << "],1/-NaN:[" << t8.to_string() << "]\n";
+	
 	return 0;
 }

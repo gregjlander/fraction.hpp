@@ -23,9 +23,14 @@
 // There are many examples of people attempting to write simple fraction
 // classes in C++. This is my attempt to (partially) write one. It is
 // an expansion of and based on the fraction example code at:
-// https://en.cppreference.com/w/cpp/language/operators
-// Outstanding issues:
-//   Complete adding noexcept where appropriate.
+// https://en.cppreference.com/w/cpp/language/operators.
+// g++ -Wall -Werror -Wconversion -Wextra -Wpedantic -fsanitize=address
+// -std=c++2a -c "%f"
+//   -f analyser
+// clang -Wall -Wmove -std=c++2a -c "%f"
+// g++ -Wall -std=c++2a -o "%e" "%f"
+//
+// Possible improvements:
 //   Improve testing.
 //   Provide ability to select which method is used to approximate doubles.
 //
@@ -46,60 +51,83 @@
 namespace mth {
 
 // Forward declarations.
-template< std::integral IT = std::int64_t, int error_exp = -6 > class fraction;
-template< std::integral IT = std::int64_t, int error_exp = -6 >
-[[nodiscard]] constexpr fraction< IT, error_exp >
-to_fraction_using_stern_brocot_with_mediants( const double from );
+template< std::integral INT = std::int64_t, int error_exp = -6 > class fraction;
+template< std::integral INT = std::int64_t, int error_exp = -6 >
+[[nodiscard]] constexpr fraction< INT, error_exp >
+to_fraction_using_stern_brocot_with_mediants( const double from ) noexcept;
+template< std::integral INT = std::int64_t, int error_exp = -6 >
+[[nodiscard]] constexpr fraction< INT, error_exp >
+to_fraction( const std::span< INT > &from ) noexcept;
 
-template< std::integral IT, int error_exp > class fraction {
+// remove when clang thinks std::pow is constexpr
+[[nodiscard]] constexpr double pow10( const int x ) noexcept {
+	const double base = 10.0; 
+	double result = 1.0;
+	if ( x < 0 ) {
+		for ( int i = 0; i > x; --i ) {
+			result /= base;
+		}
+	} else {
+		for ( int i = 0; i < x; ++i ) {
+			result *= base;
+		}
+	};
+	return result;
+};
+
+template< std::integral INT, int error_exp > class fraction {
   public:
-	// Constructors:
-	constexpr fraction() { set( 0, 1 ); };
-	constexpr fraction( const IT num, const IT den ) { set( num, den ); };
-	constexpr fraction( const fraction &from ) {
-		set( from.num(), from.den() );
-	};
-	constexpr explicit fraction( const IT num ) { set( num, 1 ); };
-	constexpr explicit fraction( const double from ) {
-		*this = to_fraction_using_stern_brocot_with_mediants( from );
-	};
-
 	// Useful constants:
-	constexpr static const fraction f_0{ 0, 1 };
-	constexpr static const fraction f_1{ 1, 1 };
-	constexpr static const fraction f_inf{ 1, 0 };
+	static const fraction f_0;	 //{ 0, 1 };
+	static const fraction f_1;	 //{ 1, 1 };
+	static const fraction f_inf; //{ 1, 0 };
+
+	// Constructors:
+	constexpr fraction() noexcept { *this = f_0; }; // set( 0, 1 ); };
+	constexpr fraction( const INT num, const INT den ) noexcept {
+		set( num, den );
+	};
+	constexpr fraction( const fraction &from ) = default;
+	constexpr fraction( fraction &&from ) = default;
+
+	constexpr explicit fraction( const INT num ) noexcept { set( num, 1 ); };
+	constexpr explicit fraction( const double from ) noexcept {
+		*this = to_fraction_using_stern_brocot_with_mediants< INT, error_exp >(
+			from );
+	};
 
 	// Numerator and denominator get methods:
-	constexpr IT num() const { return numerator; };
-	constexpr IT den() const { return denominator; };
+	constexpr INT num() const noexcept { return numerator; };
+	constexpr INT den() const noexcept { return denominator; };
 
 	// Conversions:
 	// fraction to double.
-	constexpr double to_double() const {
+	constexpr double to_double() const noexcept {
 		return (double)numerator / (double)denominator;
 	};
 
 	// Accuracy to use when approximating a double with a fraction.
-	constexpr static const double error = std::pow( 10.0, (double)error_exp );
+	constexpr static const double error = pow10( error_exp );
+	// std::pow( 10.0, (double)error_exp ); // as not constexpr in clang
 
 	// Use stern brocot algorithm to approximate a double with a fraction.
 	friend constexpr fraction
-	to_fraction_using_stern_brocot_with_mediants< IT, error_exp >(
-		const double from );
+	to_fraction_using_stern_brocot_with_mediants< INT, error_exp >(
+		const double from ) noexcept;
 
 	// Calculate the continued fraction of a double.
 	template< std::size_t continued_fraction_max_iter >
-	friend constexpr const std::array< IT, continued_fraction_max_iter >
+	friend constexpr const std::array< INT, continued_fraction_max_iter >
 	to_continued_fraction( const double num );
 
 	// Convert a continued fraction to a fraction.
 	friend constexpr fraction
-	to_fraction< IT, error_exp >( const std::span< IT > &from );
+	to_fraction< INT, error_exp >( const std::span< INT > &from ) noexcept;
 
 	// Use continued fraction algorithm to approximate a double with a fraction.
 	template< std::size_t continued_fraction_max_iter >
 	friend constexpr fraction
-	to_fraction_using_continued_fractions( const double num );
+	to_fraction_using_continued_fractions( const double num ) noexcept;
 
 	// Boolean operations:
 	// Check if fraction has denominator == 1.
@@ -113,41 +141,60 @@ template< std::integral IT, int error_exp > class fraction {
 
 	// Maths:
 	// As per std::labs.
-	[[nodiscard]] constexpr fraction abs() const {
+	[[nodiscard]] constexpr fraction abs() const noexcept {
 		return { std::labs( numerator ), denominator };
 	};
 	// 1/fraction.
-	[[nodiscard]] constexpr fraction inv() const {
+	[[nodiscard]] constexpr fraction inv() const noexcept {
 		return { denominator, numerator };
 	};
 	// Calculate the mediant of two fractions.
-	[[nodiscard]] friend constexpr fraction mediant( const fraction &f1,
-													 const fraction &f2 ) {
+	[[nodiscard]] friend constexpr fraction
+	mediant( const fraction &f1, const fraction &f2 ) noexcept {
 		return fraction{ f1.num() + f2.num(), f1.den() + f2.den() };
+	};
+	// Decomposes fraction into integral and fractional parts like std::modf
+	[[nodiscard]] constexpr std::pair< double, fraction > modf() const noexcept {
+		std::pair< double, fraction > result;
+		if ( denominator == 0 ) {
+			result = std::make_pair( 0, *this );
+		} else {
+			double iptr = 0;
+			[[maybe_unused]] double fr = std::modf( to_double(), &iptr );
+			result = std::make_pair( (INT)iptr, *this - (INT)iptr );
+		};
+		return result;
 	};
 	// Calculate the average of some fractions.
 	template< typename... T >
-	[[nodiscard]] constexpr friend fraction average( const T... fractions ) {
+	[[nodiscard]] constexpr friend fraction
+	average( const T... fractions ) noexcept {
 		const std::size_t size{ sizeof...( fractions ) };
-		return ( size == 0 ) ? f_0 : ( fractions + ... ) / (IT)size;
+		return ( size == 0 ) ? f_0 : ( fractions + ... ) / (INT)size;
 	}
 
 	// Exponentiation:
 	// Raise to the power of exp and approximate as a complex fraction.
 	[[nodiscard]] constexpr std::pair< fraction, fraction >
-	pow_c( double exp ) const {
+	pow_c( double exp ) const noexcept {
+		std::pair< fraction, fraction > result;
 		if ( ( ( exp < 0 ) && ( numerator == 0 ) ) ||
-			 ( ( exp >= 0 ) && ( denominator == 0 ) ) )
-			return { *this, f_0 };
-		const std::complex< double > pow_d =
-			std::pow( std::complex< double >{ to_double(), 0.0 }, exp );
-		return std::make_pair(
-			to_fraction_using_stern_brocot_with_mediants( pow_d.real() ),
-			to_fraction_using_stern_brocot_with_mediants( pow_d.imag() ) );
+			 ( ( exp >= 0 ) && ( denominator == 0 ) ) ) {
+			result = std::make_pair( f_inf, f_0 );
+		} else {
+			const std::complex< double > pow_d =
+				std::pow( std::complex< double >{ to_double(), 0.0 }, exp );
+			result = std::make_pair(
+				to_fraction_using_stern_brocot_with_mediants< INT, error_exp >(
+					pow_d.real() ),
+				to_fraction_using_stern_brocot_with_mediants< INT, error_exp >(
+					pow_d.imag() ) );
+		};
+		return result;
 	};
 	// Raise to the power of exp and approximate as a fraction.
 	// Note: for negatives, pow(-N, 0.5) results in 0, ie the real part.
-	[[nodiscard]] constexpr fraction pow( double exp ) const {
+	[[nodiscard]] constexpr fraction pow( double exp ) const noexcept {
 		return ( ( ( exp < 0 ) && ( numerator == 0 ) ) ||
 				 ( ( exp >= 0 ) && ( denominator == 0 ) ) )
 				   ? *this
@@ -155,64 +202,68 @@ template< std::integral IT, int error_exp > class fraction {
 						 std::pow( to_double(), exp ) );
 	};
 	// Square a fraction.
-	[[nodiscard]] constexpr fraction sq() const {
+	[[nodiscard]] constexpr fraction sq() const noexcept {
 		return ( *this ) * ( *this );
 	};
 	// Determine if abs(fraction) is a perfect square.
-	[[nodiscard]] constexpr bool is_abs_sq() const {
-		const fraction sqrt{ (IT)std::sqrt( std::labs( numerator ) ),
-							 (IT)std::sqrt( denominator ) };
-		return abs() == sqrt * sqrt;
+	[[nodiscard]] constexpr bool is_abs_sq() const noexcept {
+		const fraction sqrt_INT{ (INT)std::sqrt( std::labs( numerator ) ),
+								 (INT)std::sqrt( denominator ) };
+		return abs() == sqrt_INT * sqrt_INT;
 	};
 	// Cube a fraction.
-	[[nodiscard]] constexpr fraction cb() const {
+	[[nodiscard]] constexpr fraction cb() const noexcept {
 		return ( *this ) * ( *this ) * ( *this );
 	};
 	// Determine if this fraction is a perfect cube.
-	[[nodiscard]] constexpr bool is_cb() const {
-		const fraction cbrt{ (IT)std::cbrt( numerator ),
-							 (IT)std::cbrt( denominator ) };
-		return *this == cbrt * cbrt * cbrt;
+	[[nodiscard]] constexpr bool is_cb() const noexcept {
+		const fraction cbrt_INT{ (INT)std::cbrt( numerator ),
+								 (INT)std::cbrt( denominator ) };
+		return *this == cbrt_INT * cbrt_INT * cbrt_INT;
 	};
 	// Normalized fraction (range (-1, -0.5], [0.5, 1) ) and integral power of 2
 	// as per std::frexp() with the normalized fraction approximated as a
 	// fraction. e.g. (48/7) i.e. 6*(2^3)/7 => {(6/7), 3}
 	// 				  (1/4)                 => {(1/2), -1}
-	[[nodiscard]] constexpr std::pair< fraction, int > frexp() const {
+	[[nodiscard]] constexpr std::pair< fraction, int > frexp() const noexcept {
 		int exp = 0;
-		fraction num = ( denominator == 0 )
+		fraction fr = ( denominator == 0 )
 						   ? *this
 						   : fraction{ std::frexp( to_double(), &exp ) };
-		return std::make_pair( num, exp );
+		return std::make_pair( fr, exp );
 	};
 	// Call load exponent as per std::ldexp() approximated as a fraction.
-	// e.g (2/5).ldexp(3) => (8/125)
-	[[nodiscard]] constexpr fraction ldexp( int exp ) const {
+	// e.g (2/5).ldexp(3) i.e. (2/5)*2^3 => (16/5)
+	[[nodiscard]] constexpr fraction ldexp( int exp ) const noexcept {
 		return ( denominator == 0 )
 				   ? *this
 				   : fraction{ std::ldexp( to_double(), exp ) };
 	};
 	// Calculate sqrt of a fraction and approximate it as a complex fraction.
-	[[nodiscard]] constexpr std::pair< fraction, fraction > sqrt_c() const {
-		if ( denominator == 0 )
-			return { *this, f_0 };
-		const std::complex< double > sqrt_d{ std::sqrt(
-			std::complex< double >{ to_double(), 0.0 } ) };
-		return std::make_pair(
-			to_fraction_using_stern_brocot_with_mediants( sqrt_d.real() ),
-			to_fraction_using_stern_brocot_with_mediants( sqrt_d.imag() ) );
-		;
+	[[nodiscard]] constexpr std::pair< fraction, fraction >
+	sqrt_c() const noexcept {
+		std::pair< fraction, fraction > result;
+		if ( denominator == 0 ) {
+			result = std::make_pair( *this, f_0 );
+		} else {
+			const std::complex< double > sqrt_d{ std::sqrt(
+				std::complex< double >{ to_double(), 0.0 } ) };
+			result = std::make_pair(
+				to_fraction_using_stern_brocot_with_mediants( sqrt_d.real() ),
+				to_fraction_using_stern_brocot_with_mediants( sqrt_d.imag() ) );
+		};
+		return result;
 	};
 	// Calculate sqrt of a fraction and approximate it as a fraction.
 	// Note: for negatives, sqrt(-N) results in 0, ie the real part.
-	[[nodiscard]] constexpr fraction sqrt() const {
+	[[nodiscard]] constexpr fraction sqrt() const noexcept {
 		return ( denominator == 0 )
 				   ? *this
 				   : to_fraction_using_stern_brocot_with_mediants(
 						 std::sqrt( to_double() ) );
 	};
 	// Calculate cbrt of a fraction and approximate it as a fraction.
-	[[nodiscard]] constexpr fraction cbrt() const {
+	[[nodiscard]] constexpr fraction cbrt() const noexcept {
 		return ( denominator == 0 )
 				   ? *this
 				   : to_fraction_using_stern_brocot_with_mediants(
@@ -221,30 +272,13 @@ template< std::integral IT, int error_exp > class fraction {
 	// Split fraction into two parts by extracting any squares(2), cubes(3) etc.
 	// See examples below.
 	[[nodiscard]] constexpr std::pair< fraction, fraction >
-	simplify_rt( const double rt ) const {
+	simplify_rt( const double rt ) const noexcept {
 		std::pair result{ f_1, *this };
-		fraction num_remain{ numerator };
-		IT num_factor =
-			(IT)std::floor( std::pow( std::labs( numerator ), 1.0 / rt ) );
-		for ( ; num_factor != 0; --num_factor ) {
-			num_remain = fraction{ numerator, (IT)std::pow( num_factor, rt ) };
-			if ( num_remain.denominator == 1 )
-				break;
-		};
-		if ( num_factor == 0 )
-			++num_factor;
-		fraction den_remain{ denominator };
-		IT den_factor = (IT)std::floor( std::pow( denominator, 1.0 / rt ) );
-		for ( ; den_factor != 0; --den_factor ) {
-			den_remain = { denominator, (IT)std::pow( den_factor, rt ) };
-			if ( den_remain.denominator == 1 )
-				break;
-		};
-		if ( den_factor == 0 )
-			++den_factor;
-		if ( ( num_factor > 1 ) || ( den_factor > 1 ) ) {
-			result = std::make_pair( fraction{ num_factor, den_factor },
-									 num_remain / den_remain );
+		auto [np_factor, np_remain] = simplify_root( numerator, rt );
+		auto [dp_factor, dp_remain] = simplify_root( denominator, rt );
+		if ( ( np_factor > 1 ) || ( dp_factor > 1 ) ) {
+			result = std::make_pair( fraction{ np_factor, dp_factor },
+									 np_remain / dp_remain );
 		};
 		return result;
 	};
@@ -252,14 +286,14 @@ template< std::integral IT, int error_exp > class fraction {
 	// e.g. (56/45)     i.e. (2*2*2*7/3*3*5)          =>{(2/3),(14/5)}
 	//		(392/10125) i.e. (2*2*2*7*7/3*3*3*3*5*5*5)=>{(14/45),(2/5)}
 	[[nodiscard]] constexpr std::pair< fraction, fraction >
-	simplify_sqrt() const {
+	simplify_sqrt() const noexcept {
 		return simplify_rt( 2.0 );
 	};
 	// split cbrt into two parts by extracting any cubes.
 	// e.g. (56/135)      i.e. (2*2*2*7/3*3*3*5)            =>{(2/3),(7/5)}
 	//		(19208/10125) i.e. (2*2*2*7*7*7*7/3*3*3*3*5*5*5)=>{(14/15),(49/3)}
 	[[nodiscard]] constexpr std::pair< fraction, fraction >
-	simplify_cbrt() const {
+	simplify_cbrt() const noexcept {
 		return simplify_rt( 3.0 );
 	};
 
@@ -268,7 +302,7 @@ template< std::integral IT, int error_exp > class fraction {
 		return { numerator * rhs.den() + denominator * rhs.num(),
 				 denominator * rhs.den() };
 	};
-	constexpr fraction operator+( const IT &rhs ) const {
+	constexpr fraction operator+( const INT &rhs ) const {
 		return { numerator + denominator * rhs, denominator };
 	};
 	constexpr fraction operator+( const double &rhs ) const {
@@ -278,7 +312,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this + rhs;
 		return *this;
 	};
-	constexpr fraction &operator+=( const IT &rhs ) {
+	constexpr fraction &operator+=( const INT &rhs ) {
 		*this = *this + rhs;
 		return *this;
 	};
@@ -286,7 +320,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this + rhs;
 		return *this;
 	};
-	constexpr friend fraction operator+( const IT &lhs, const fraction &rhs ) {
+	constexpr friend fraction operator+( const INT &lhs, const fraction &rhs ) {
 		return rhs + lhs;
 	};
 	constexpr friend fraction operator+( const double &lhs,
@@ -310,7 +344,7 @@ template< std::integral IT, int error_exp > class fraction {
 	constexpr fraction operator-( const fraction &rhs ) const {
 		return *this + ( -rhs );
 	};
-	constexpr fraction operator-( const IT &rhs ) const {
+	constexpr fraction operator-( const INT &rhs ) const {
 		return *this + ( -rhs );
 	};
 	constexpr fraction operator-( const double &rhs ) const {
@@ -320,7 +354,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this += -rhs;
 		return *this;
 	};
-	constexpr fraction &operator-=( const IT &rhs ) {
+	constexpr fraction &operator-=( const INT &rhs ) {
 		*this += -rhs;
 		return *this;
 	};
@@ -328,7 +362,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this += -rhs;
 		return *this;
 	};
-	constexpr friend fraction operator-( const IT &lhs, const fraction &rhs ) {
+	constexpr friend fraction operator-( const INT &lhs, const fraction &rhs ) {
 		return -rhs + lhs;
 	};
 	constexpr friend fraction operator-( const double &lhs,
@@ -349,7 +383,7 @@ template< std::integral IT, int error_exp > class fraction {
 	constexpr fraction operator*( const fraction &rhs ) const {
 		return { numerator * rhs.num(), denominator * rhs.den() };
 	};
-	constexpr fraction operator*( const IT &rhs ) const {
+	constexpr fraction operator*( const INT &rhs ) const {
 		return { numerator * rhs, denominator };
 	};
 	constexpr fraction operator*( const double &rhs ) const {
@@ -359,7 +393,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = ( *this ) * rhs;
 		return *this;
 	};
-	constexpr fraction &operator*=( const IT &rhs ) {
+	constexpr fraction &operator*=( const INT &rhs ) {
 		*this = ( *this ) * rhs;
 		return *this;
 	};
@@ -367,7 +401,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = ( *this ) * rhs;
 		return *this;
 	};
-	constexpr friend fraction operator*( const IT lhs, const fraction &rhs ) {
+	constexpr friend fraction operator*( const INT lhs, const fraction &rhs ) {
 		return rhs * lhs;
 	};
 	constexpr friend fraction operator*( const double lhs,
@@ -379,7 +413,7 @@ template< std::integral IT, int error_exp > class fraction {
 	constexpr fraction operator/( const fraction &rhs ) const {
 		return { numerator * rhs.den(), denominator * rhs.num() };
 	};
-	constexpr fraction operator/( const IT &rhs ) const {
+	constexpr fraction operator/( const INT &rhs ) const {
 		return { numerator, denominator * rhs };
 	};
 	constexpr fraction operator/( const double &rhs ) const {
@@ -389,7 +423,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this / rhs;
 		return *this;
 	};
-	constexpr fraction &operator/=( const IT &rhs ) {
+	constexpr fraction &operator/=( const INT &rhs ) {
 		*this = *this / rhs;
 		return *this;
 	};
@@ -397,7 +431,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this / rhs;
 		return *this;
 	};
-	constexpr friend fraction operator/( const IT lhs, const fraction &rhs ) {
+	constexpr friend fraction operator/( const INT lhs, const fraction &rhs ) {
 		return fraction{ lhs * rhs.den(), rhs.num() };
 	};
 	constexpr friend fraction operator/( const double lhs,
@@ -412,13 +446,13 @@ template< std::integral IT, int error_exp > class fraction {
 				 ( denominator == 0 ) )
 				   ? f_inf
 				   : *this -
-						 (IT)std::trunc( ( *this / rhs ).to_double() ) * rhs;
+						 (INT)std::trunc( ( *this / rhs ).to_double() ) * rhs;
 	};
-	constexpr fraction operator%( const IT &rhs ) const {
+	constexpr fraction operator%( const INT &rhs ) const {
 		return ( ( denominator == 0 ) || ( rhs == 0 ) )
 				   ? f_inf
 				   : *this -
-						 (IT)std::trunc( ( *this / rhs ).to_double() ) * rhs;
+						 (INT)std::trunc( ( *this / rhs ).to_double() ) * rhs;
 	};
 	constexpr fraction operator%( const double &rhs ) const {
 		return ( denominator == 0 ) ? *this
@@ -428,7 +462,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this % rhs;
 		return *this;
 	};
-	constexpr fraction &operator%=( const IT &rhs ) {
+	constexpr fraction &operator%=( const INT &rhs ) {
 		*this = *this % rhs;
 		return *this;
 	};
@@ -436,7 +470,7 @@ template< std::integral IT, int error_exp > class fraction {
 		*this = *this % rhs;
 		return *this;
 	};
-	constexpr friend fraction operator%( const IT lhs, const fraction &rhs ) {
+	constexpr friend fraction operator%( const INT lhs, const fraction &rhs ) {
 		return fraction{ lhs, 1 } % rhs;
 	};
 	constexpr friend fraction operator%( const double lhs,
@@ -447,9 +481,8 @@ template< std::integral IT, int error_exp > class fraction {
 	};
 
 	// =
-	constexpr void operator=( const fraction &rhs ) {
-		set( rhs.num(), rhs.den() );
-	};
+	constexpr fraction &operator=( const fraction &rhs ) = default;
+	constexpr fraction &operator=( fraction &&rhs ) = default;
 
 	// Comparison operators:
 	constexpr bool operator==( const fraction &rhs ) const {
@@ -495,35 +528,60 @@ template< std::integral IT, int error_exp > class fraction {
 
   private:
 	// Set method. A negative result is stored with the numerator.
-	constexpr void set( const IT num = 1, const IT den = 1 ) noexcept {
+	constexpr void set( const INT num = 1, const INT den = 1 ) noexcept {
 		// standard undefined behaviour if denominator is 0
 		initial_num = num;
 		initial_den = den;
-		const IT gcd = std::gcd( num, den );
-		numerator = num / (IT)std::copysign( gcd, den );
+		const INT gcd = std::gcd( num, den );
+		numerator = num / (INT)std::copysign( gcd, den );
 		denominator = std::labs( den ) / gcd;
+	};
+	
+	// Split INT into two parts by extracting any squares(2), cubes(3) etc.
+	// See examples above.
+	[[nodiscard]] constexpr std::pair< INT, fraction >
+	simplify_root( const INT i, const double root ) const noexcept {
+		fraction remain{ i };
+		INT factor = (INT)std::floor( std::pow( std::labs( i ), 1.0 / root ) );
+		for ( ; factor != 0; --factor ) {
+			remain = fraction{ i, (INT)std::pow( factor, root ) };
+			if ( remain.denominator == 1 ) {
+				break;
+			};
+		};
+		if ( factor == 0 ) {
+			++factor;
+		};
+		return std::make_pair( factor, remain );
 	};
 
 	// Store the fraction.
-	IT initial_num;
-	IT numerator;
-	IT initial_den;
-	IT denominator;
+	INT initial_num;
+	INT numerator;
+	INT initial_den;
+	INT denominator;
 }; // class fraction
 
-template< std::integral IT, int error_exp >
-[[nodiscard]] constexpr fraction< IT, error_exp >
-to_fraction_using_stern_brocot_with_mediants( const double from ) {
-	fraction< IT, error_exp > med{};
+template< std::integral INT, int error_exp >
+const fraction< INT, error_exp > fraction< INT, error_exp >::f_0{ 0, 1 };
+template< std::integral INT, int error_exp >
+const fraction< INT, error_exp > fraction< INT, error_exp >::f_1{ 1, 1 };
+template< std::integral INT, int error_exp >
+const fraction< INT, error_exp > fraction< INT, error_exp >::f_inf{ 1, 0 };
+
+template< std::integral INT, int error_exp >
+[[nodiscard]] constexpr fraction< INT, error_exp >
+to_fraction_using_stern_brocot_with_mediants( const double from ) noexcept {
+	fraction< INT, error_exp > med{};
 	// save steps by not starting at infinity and 0
-	for ( fraction< IT, error_exp > high{ (IT)std::ceil( from ) },
-		  low{ (IT)std::floor( from ) };
+	for ( fraction< INT, error_exp > high{ (INT)std::ceil( from ) },
+		  low{ (INT)std::floor( from ) };
 		  ; ) {
 		med = mediant( low, high );
-		if ( med.to_double() - from > fraction< IT, error_exp >::error ) {
+		if ( med.to_double() - from > fraction< INT, error_exp >::error ) {
 			high = med;
 		} else if ( med.to_double() - from <
-					-fraction< IT, error_exp >::error ) {
+					-fraction< INT, error_exp >::error ) {
 			low = med;
 		} else {
 			break;
@@ -533,44 +591,44 @@ to_fraction_using_stern_brocot_with_mediants( const double from ) {
 };
 
 template< std::size_t continued_fraction_max_iter = 25,
-		  std::integral IT = std::int64_t, int error_exp = -6 >
-[[nodiscard]] constexpr std::array< IT, continued_fraction_max_iter >
-to_continued_fraction( const double num ) {
-	std::array< IT, continued_fraction_max_iter > result{ 0 };
+		  std::integral INT = std::int64_t, int error_exp = -6 >
+[[nodiscard]] constexpr std::array< INT, continued_fraction_max_iter >
+to_continued_fraction( const double num ) noexcept {
+	std::array< INT, continued_fraction_max_iter > result{ 0 };
 	double remainder = num;
 	double iptr;
 	for ( auto it = result.begin(); it != result.end();
 		  ++it, remainder = 1.0 / remainder ) {
 		remainder = std::modf( remainder, &iptr );
-		*it = (IT)iptr;
-		if ( std::abs( remainder ) < fraction< IT, error_exp >::error ) {
+		*it = (INT)iptr;
+		if ( std::abs( remainder ) < fraction< INT, error_exp >::error ) {
 			break;
 		};
 	};
 	return result;
 };
 
-template< std::integral IT = std::int64_t, int error_exp = -6 >
-[[nodiscard]] constexpr fraction< IT, error_exp >
-to_fraction( const std::span< IT > &from ) {
-	return std::accumulate(
-		std::next( from.rbegin() ), from.rend(), fraction< IT, error_exp >::f_0,
-		[]( fraction< IT, error_exp > a, IT b ) {
-			fraction< IT, error_exp > am( std::move( a ) );
-			return ( am.num() == 0 ) ? fraction{ b } : am.inv() + b;
-		} );
+template< std::integral INT, int error_exp >
+[[nodiscard]] constexpr fraction< INT, error_exp >
+to_fraction( const std::span< INT > &from ) noexcept {
+	return std::accumulate( std::next( from.rbegin() ), from.rend(),
+							fraction< INT, error_exp >::f_0,
+							[]( fraction< INT, error_exp > a, INT b ) {
+								return ( a.num() == 0 ) ? fraction{ b }
+														: a.inv() + b;
+							} );
 };
 
 template< std::size_t continued_fraction_max_iter = 25,
-		  std::integral IT = std::int64_t, int error_exp = -6 >
-[[nodiscard]] constexpr fraction< IT, error_exp >
-to_fraction_using_continued_fractions( const double num ) {
+		  std::integral INT = std::int64_t, int error_exp = -6 >
+[[nodiscard]] constexpr fraction< INT, error_exp >
+to_fraction_using_continued_fractions( const double num ) noexcept {
 	auto cf{ to_continued_fraction< continued_fraction_max_iter >( num ) };
-	return to_fraction( std::span< IT >{ cf } );
+	return to_fraction( std::span< INT >{ cf } );
 };
 
-template< std::integral IT = std::int64_t, int error_exp = -6 >
-[[nodiscard]] std::string to_string( const auto &cf ) noexcept( false ) {
+template< std::integral INT = std::int64_t, int error_exp = -6 >
+[[nodiscard]] std::string to_string( const auto &cf ) noexcept {
 	const auto last =
 		std::ranges::find_if( cf.rbegin(), std::prev( cf.rend() ),
 							  []( auto val ) { return val != 0; } )
@@ -580,7 +638,8 @@ template< std::integral IT = std::int64_t, int error_exp = -6 >
 		[]( std::string result, int val ) {
 			return std::move( result ) + ',' + std::to_string( val );
 		} );
-	//~ return std::string_view{std::next( cf.begin() ),last}|std::views::join_with(' ');
+	//~ return std::string_view{std::next( cf.begin()
+	//),last}|std::views::join_with(' ');
 };
 
 }; // namespace mth
